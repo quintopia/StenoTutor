@@ -19,39 +19,58 @@
 
 // This class stores word speed and accuracy, and provides an
 // utility method to compute its penalty score.
+import java.util.Arrays;
 public class WordStats {
-  ArrayList<Long> typeTime = new ArrayList<Long>();
+  long[] typeTime;
+  int nextSample = 0;
   ArrayList<Boolean> isAccurate = new ArrayList<Boolean>();
   int averageSamples;
 
   // Standard constructor. Add a low performance record by default.
   public WordStats(int startAverageWpm, int averageSamples) {
     this.averageSamples = averageSamples;
-    typeTime.add((long) 60000.0 / startAverageWpm);
+    this.typeTime = new long[averageSamples];
+    Arrays.fill(this.typeTime,-1);
+    this.typeTime[this.typeTime.length - 1] = (long) 60000.0 / startAverageWpm;
     isAccurate.add(false); // this field is not used in the current version
+  }
+  
+  // Constructor using existing data.
+  public WordStats(int averageSamples, long[] typeTime) {
+    this.averageSamples = averageSamples;
+    this.typeTime = new long[averageSamples];
+    Arrays.fill(this.typeTime,-1);
+    System.arraycopy(typeTime, max(0,typeTime.length-averageSamples), this.typeTime, max(0, averageSamples-typeTime.length), min(averageSamples, typeTime.length));
+    isAccurate.add(false); // this field is not used in the current version
+  }
+  
+  public void addSample(long time) {
+    this.typeTime[this.nextSample] = time;
+    this.nextSample = (this.nextSample + 1)%this.averageSamples;
+  }
+  
+  private long typeTimeSum() {
+    long totalTime = 0;
+    int samples = 0;
+    for (int i = 0; i < this.averageSamples; i++) {
+      if (this.typeTime[i] >= 0) {
+        totalTime+=this.typeTime[i];
+        samples++;
+      }
+    }
+    return totalTime*this.averageSamples/samples; //assume missing values are equal to mean
   }
 
   // Get average WPM for this word
-  float getAvgWpm() {
-    long totalTime = 0;
-    if (typeTime.size() > 0) {
-      for (int i = typeTime.size() - averageSamples; i < typeTime.size(); i++) totalTime += typeTime.get(max(i, 0));
-      return averageSamples * 1.0 / (totalTime / 60000.0);
-    } else {
-      return 1.0;
-    }
+  public float getAvgWpm() {
+    return this.averageSamples * 1.0 / (this.typeTimeSum() / 60000.0);
   }
 
   // Return the word penalty score. In this version, only speed is
   // taking into account
-  long getWordPenalty() {
-    long timePenalty = 0;
-    if (typeTime.size() > 0) {
-      for (int i = typeTime.size() - averageSamples; i < typeTime.size(); i++) timePenalty += typeTime.get(max(i, 0));
-      // The returned value is directly proportional to timePenalty^3
-      return timePenalty * timePenalty / 2000 * timePenalty;
-    } else {
-      return 9999999999L;
-    }
+  public long getWordPenalty() {
+    long timePenalty = this.typeTimeSum();
+    // The returned value is directly proportional to timePenalty^3
+    return timePenalty * timePenalty / 2000 * timePenalty;
   }
 }

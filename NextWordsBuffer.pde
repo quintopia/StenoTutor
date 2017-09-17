@@ -16,7 +16,7 @@
  *
  *   Copyright 2013 Emanuele Caruso. See LICENSE.txt for details.
  */
-
+ 
 // Represents a multi-word buffer containing the next target line.
 // It uses lot of fields from StenoTutor class
 public class NextWordsBuffer {
@@ -161,11 +161,12 @@ public class NextWordsBuffer {
     for (int i = 0; i < startBaseWords + unlockedWords; i++) {
       if (i == previousWordIndex || wordsBlacklist.contains(dictionary.get(i).word)) continue;
       else {
-        int penalty = (int) map(wordStats.get(i).getWordPenalty(), penaltyLimits[0], penaltyLimits[1], 1, 100);
+        int penalty = (int) utils.longmap(wordStats.get(i).getWordPenalty(), penaltyLimits[0], penaltyLimits[1], 1L, 100L);
+        
         for (int j = 0; j < penalty; j++) wordPool.add(i);
       }
     }
-
+    
     // Fetch a random word from the word pool
     return wordPool.get((int) random(0, wordPool.size()));
   }
@@ -180,17 +181,22 @@ public class NextWordsBuffer {
       if (currentMinPenalty > penalty) currentMinPenalty = penalty;
       if (currentMaxPenalty < penalty) currentMaxPenalty = penalty;
     }
+    if (currentMinPenalty==currentMaxPenalty) currentMaxPenalty+=1;
     return new long[] {currentMinPenalty, currentMaxPenalty};
   }
 
   // Draw target line text
-  void showText(int x, int y) {
+  void showText(int x, int y, String lastFullWord) {
     float currentX = x;
     textFont(font, mainTextFontSize);
     for (int i = 0; i < nextWords.size(); i++) {
       int index = nextWords.get(i);
       String word = dictionary.get(index).word;
       if (i == highlightedWordIndex) {
+        
+        if (lastFullWord.endsWith("{-|}")) {
+          word = word.substring(0,1).toUpperCase() + word.substring(1);
+        }
         noFill();
         stroke(250, 200, 100);
         line(currentX, y + mainTextFontSize / 5, currentX + textWidth(word), y + mainTextFontSize / 5);
