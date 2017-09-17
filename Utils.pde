@@ -21,7 +21,7 @@ import java.util.ArrayList;
 
 // Provides various helper methods
 public class Utils {
-  
+
   // Read WordStats dictionary
   public ArrayList<WordStats> readWordStats(String sttDictionaryFilePath, int averageSamples) {
     ArrayList<WordStats> wordStats = new ArrayList<WordStats>();
@@ -35,12 +35,12 @@ public class Utils {
         for (int j = 0; j < encodedTypeTimes.size(); j++) {
           typeTimes[j] = encodedTypeTimes.getLong(j);
         }
-        wordStats.add(new WordStats(averageSamples, typeTimes)); 
+        wordStats.add(new WordStats(averageSamples, typeTimes));
       }
     }
     return wordStats;
   }
-  
+
   public void saveWordStats(ArrayList<WordStats> wordStats, String sttDictionaryFilePath) {
     JSONArray encodedStats = new JSONArray();
     for (int i = 0; i < wordStats.size(); i++) {
@@ -51,13 +51,13 @@ public class Utils {
       for (int j = 0; j < thisWord.typeTime.length; j++) {
         long time = thisWord.typeTime[(j + thisWord.nextSample)%thisWord.typeTime.length];
         if (time>0) {
-          encodedTypeTimes.setLong(k++,time);
+          encodedTypeTimes.setLong(k++, time);
         }
       }
-      oneWord.setJSONArray("typeTimes",encodedTypeTimes);
-      encodedStats.setJSONObject(i,oneWord);
+      oneWord.setJSONArray("typeTimes", encodedTypeTimes);
+      encodedStats.setJSONObject(i, oneWord);
     }
-    saveJSONArray(encodedStats,sttDictionaryFilePath,"compact");
+    saveJSONArray(encodedStats, sttDictionaryFilePath, "compact");
   }
 
   // Read lesson dictionary and add words and corresponing strokes
@@ -88,8 +88,8 @@ public class Utils {
     if (lesReader != null) {
       try {
         lesReader.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
 
@@ -111,8 +111,8 @@ public class Utils {
     if (chdReader != null) {
       try {
         chdReader.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
 
@@ -155,8 +155,8 @@ public class Utils {
     if (blkReader != null) {
       try {
         blkReader.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
 
@@ -183,8 +183,8 @@ public class Utils {
     if (blkWriter != null) {
       try {
         blkWriter.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
   }
@@ -210,8 +210,8 @@ public class Utils {
       String l;
       while ((l = logReader.readLine()) != null) line = l; 
       int indexOfTransl = -1;
-      if(line != null) indexOfTransl = line.indexOf("Translation");
-      if(line != null && indexOfTransl > -1) {
+      if (line != null) indexOfTransl = line.indexOf("Translation");
+      if (line != null && indexOfTransl > -1) {
         boolean isMultipleWorld = false;
         int indexOfLast = 1 + line.indexOf(",) : ");
         if (indexOfLast < 1) {
@@ -225,9 +225,10 @@ public class Utils {
       } else {
         return null;
       }
-    } catch (Exception e) {
-      println("Error while reading stroke from Plover log file: " + e.getMessage());
-    } //<>//
+    } 
+    catch (Exception e) {
+      println("Error while reading stroke from Plover log file: " + e.getMessage()); //<>//
+    }
     return null;
   }
 
@@ -236,10 +237,10 @@ public class Utils {
     String result = "";
     String strokeLine = line.substring(start, end);
     String[] strokes = strokeLine.split("', '");
-    for (String stroke: strokes) result += stroke + "/";
+    for (String stroke : strokes) result += stroke + "/";
     return result.substring(0, result.length() - 1);
   }
-  
+
   public final long longmap(long value, long start1, long stop1, long start2, long stop2) {
     return start2 + (stop2 - start2) * ((value - start1) / (stop1 - start1));
   }

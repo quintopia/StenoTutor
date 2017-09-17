@@ -1,4 +1,4 @@
-/*
+/* //<>//
  *   This file is part of StenoTutor.
  *
  *   StenoTutor is free software: you can redistribute it and/or modify
@@ -191,15 +191,15 @@ int keyboardY = baseY + 230;
 // Session setup
 void setup() {
   // Font definition, size is modified later
-  font = createFont("Arial",30,true);
+  font = createFont("Arial", 30, true);
   // Read session configuration
   readSessionConfig();
 
   // Load Plover logs
   logReader = utils.loadPloverLogs(logFilePath);
-  
+
   // Set the last full word as the result of the last stroke in the log in case the user stroked
-  // something that will cause the next word to be capitalized just before starting the program.
+  // something that will cause the next word to be capitalized just before starting the program. Mr.
   stroke = utils.getNextStroke(logReader);
   if (stroke != null) {
     previousStroke = stroke;
@@ -279,8 +279,8 @@ void draw() {
     }
   }
 
-  
-  
+
+
 
   // Paint background, show text info and draw keyboard
   background(25);
@@ -300,48 +300,48 @@ void draw() {
 
 void keyPressed() {
   switch (key) {
-    case TAB:
-      tabKeyReleased = true;
-      pauseMenuOption = 0;
-      break;
-    case BACKSPACE:
-      buffer = buffer.substring(0, max(0, buffer.length() - 1));
-      break;
-    case ESC:
-    case DELETE:
-      break;
-    case ENTER:
-    case RETURN:
-      if (isLessonPaused) {
-        firePauseMenuOption();
+  case TAB:
+    tabKeyReleased = true;
+    pauseMenuOption = 0;
+    break;
+  case BACKSPACE:
+    buffer = buffer.substring(0, max(0, buffer.length() - 1));
+    break;
+  case ESC:
+  case DELETE:
+    break;
+  case ENTER:
+  case RETURN:
+    if (isLessonPaused) {
+      firePauseMenuOption();
+    }
+    break;
+  case CODED:
+    if (isLessonPaused) {
+      switch(keyCode) {
+      case UP: 
+        pauseMenuOption = ((pauseMenuOption-1)%4 + 4)%4;
+        if (isLessonSaved && pauseMenuOption==1) pauseMenuOption = 0;
+        break;
+      case DOWN:
+        pauseMenuOption = (pauseMenuOption+1)%4;
+        if (isLessonSaved && pauseMenuOption==1) pauseMenuOption = 2;
       }
-      break;
-    case CODED:
-      if (isLessonPaused) {
-        switch(keyCode) {
-          case UP: 
-            pauseMenuOption = ((pauseMenuOption-1)%4 + 4)%4;
-            if (isLessonSaved && pauseMenuOption==1) pauseMenuOption = 0;
-            break;
-          case DOWN:
-            pauseMenuOption = (pauseMenuOption+1)%4;
-            if (isLessonSaved && pauseMenuOption==1) pauseMenuOption = 2;
-        }
+    }
+    break;
+  default:
+    if (!isLessonPaused) {
+      buffer += key;
+      // Read the next stroke from Plover log
+      stroke = utils.getNextStroke(logReader);
+
+      // If the stroke is not null, store it
+      if (stroke != null) {
+        previousStroke = stroke;
       }
-      break;
-    default:
-      if (!isLessonPaused) {
-        buffer += key;
-          // Read the next stroke from Plover log
-        stroke = utils.getNextStroke(logReader); //<>//
-      
-        // If the stroke is not null, store it
-        if (stroke != null) {
-          previousStroke = stroke;
-        }
-        checkBuffer(false);
-      }
-   }
+      checkBuffer(false);
+    }
+  }
 }
 
 
@@ -383,14 +383,15 @@ void readSessionConfig() {
   Properties properties = new Properties();
   try {
     properties.load(createInput(sketchPath("/data/session.properties")));
-  } catch (Exception e ) {
+  } 
+  catch (Exception e ) {
     println("Cannot read session properties, using defalt values. Error: " + e.getMessage());
   }
   logFilePath = properties.getProperty("session.logFilePath", findPloverLog());
   lessonName = properties.getProperty("session.lessonName", "common_words");
   timebox = Integer.valueOf(properties.getProperty("session.timebox", "10"));
   startBaseWords = Integer.valueOf(properties.getProperty("session.startBaseWords", "" + 5));
-  unlockedWords = Integer.valueOf(properties.getProperty("session.unlockedWords","0"));
+  unlockedWords = Integer.valueOf(properties.getProperty("session.unlockedWords", "0"));
   currentLevel = Integer.valueOf(properties.getProperty("session.startLevel", "0"));
   incrementWords = Integer.valueOf(properties.getProperty("session.incrementWords", "" + 5));
   minLevelUpWordWpm = Integer.valueOf(properties.getProperty("session.minLevelUpWordWpm", "" + 30));
@@ -464,11 +465,11 @@ void drawKeyboard() {
 void showTextInfo(Stroke stroke) {
   textAlign(RIGHT);
   fill(isLessonPaused ? 200 : 250);
-  textFont(font,mainTextFontSize);
+  textFont(font, mainTextFontSize);
   text("Target words:", nextWordX - labelValueSpace, nextWordY);
   text("Input:", bufferX - labelValueSpace, bufferY);
   fill(200);
-  textFont(font,defaultFontSize);
+  textFont(font, defaultFontSize);
   text("Next chord:", nextChordX - labelValueSpace, nextChordY);
   text("Typed chord:", lastChordX - labelValueSpace, lastChordY);
   text("WPM:", wpmX - labelValueSpace, wpmY);
@@ -481,7 +482,7 @@ void showTextInfo(Stroke stroke) {
   text("Worst w:", worstWordX - labelValueSpace, worstWordY);
   textAlign(LEFT);
   fill(isLessonPaused ? 200 : 250);
-  textFont(font,mainTextFontSize);
+  textFont(font, mainTextFontSize);
   nextWordsBuffer.showText(nextWordX, nextWordY, lastFullWord);
   text(buffer.trim() + (isLessonPaused || System.currentTimeMillis() % 1000 < 500 ? "_" : ""), bufferX, bufferY);
   fill(200);
@@ -501,8 +502,8 @@ void showTextInfo(Stroke stroke) {
 
 //display the pause menu
 void showMenu() {
-  fill(200,200,250);
-  rect(width/2-125, height/2-110,250,222,7);
+  fill(200, 200, 250);
+  rect(width/2-125, height/2-110, 250, 222, 7);
   textAlign(CENTER);
   textFont(font, menuFontSize);
   fill(pauseMenuOption == 0 ? 100 : 50);
@@ -539,11 +540,11 @@ void firePauseMenuOption() {
 }
 
 void resetSessionInfo() {
-    typedWords = 0;
-    worstWordWpm = 0;
-    worstWord = "";
-    nextWordsBuffer.goToListEnd();
-    checkBuffer(true);
+  typedWords = 0;
+  worstWordWpm = 0;
+  worstWord = "";
+  nextWordsBuffer.goToListEnd();
+  checkBuffer(true);
 }
 
 void saveSession() {
@@ -571,7 +572,8 @@ void saveSession() {
     PrintWriter outfile = createWriter(sketchPath("/data/session.properties"));
     outfile.print(inputStr);
     outfile.close();
-  } catch (IOException e) {
+  } 
+  catch (IOException e) {
     println("Error writing session properties.");
   }
   //save wordstats
@@ -590,7 +592,7 @@ float getAverageWpm() {
 void checkBuffer(boolean forceNextWord) {
   String word = dictionary.get(currentWordIndex).word;
   if (lastFullWord.endsWith("{-|}")) {
-    word = word.substring(0,1).toUpperCase() + word.substring(1);
+    word = word.substring(0, 1).toUpperCase() + word.substring(1);
   }
   if (buffer.trim().equals(word) || forceNextWord) {
     lastFullWord = previousStroke.word;
@@ -644,14 +646,14 @@ void checkLevelUp() {
       return;
     }
   }
-  levelUp(); 
+  levelUp();
 }
 
 // Level up, unlock new words
 void levelUp() {
   int totalWords = startBaseWords + unlockedWords;
   if (totalWords == dictionary.size()) {
-    if(isLessonCompleted == false) {
+    if (isLessonCompleted == false) {
       announceLessonCompleted();
       isLessonCompleted = true;
     }
@@ -659,7 +661,7 @@ void levelUp() {
   }
   int i = totalWords;
   unlockedWords += incrementWords;
-  if(startBaseWords + unlockedWords > dictionary.size()) unlockedWords = dictionary.size() - startBaseWords;
+  if (startBaseWords + unlockedWords > dictionary.size()) unlockedWords = dictionary.size() - startBaseWords;
   while (totalWords < startBaseWords + unlockedWords && i < dictionary.size()) {
     if (wordsBlacklist.contains(dictionary.get(i).word.trim())) {
       unlockedWords++;

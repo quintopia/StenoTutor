@@ -30,25 +30,25 @@ public class WordStats {
   public WordStats(int startAverageWpm, int averageSamples) {
     this.averageSamples = averageSamples;
     this.typeTime = new long[averageSamples];
-    Arrays.fill(this.typeTime,-1);
+    Arrays.fill(this.typeTime, -1);
     this.typeTime[this.typeTime.length - 1] = (long) 60000.0 / startAverageWpm;
     isAccurate.add(false); // this field is not used in the current version
   }
-  
+
   // Constructor using existing data.
   public WordStats(int averageSamples, long[] typeTime) {
     this.averageSamples = averageSamples;
     this.typeTime = new long[averageSamples];
-    Arrays.fill(this.typeTime,-1);
-    System.arraycopy(typeTime, max(0,typeTime.length-averageSamples), this.typeTime, max(0, averageSamples-typeTime.length), min(averageSamples, typeTime.length));
+    Arrays.fill(this.typeTime, -1);
+    System.arraycopy(typeTime, max(0, typeTime.length-averageSamples), this.typeTime, max(0, averageSamples-typeTime.length), min(averageSamples, typeTime.length));
     isAccurate.add(false); // this field is not used in the current version
   }
-  
+
   public void addSample(long time) {
     this.typeTime[this.nextSample] = time;
     this.nextSample = (this.nextSample + 1)%this.averageSamples;
   }
-  
+
   private long typeTimeSum() {
     long totalTime = 0;
     int samples = 0;

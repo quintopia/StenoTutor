@@ -16,7 +16,7 @@
  *
  *   Copyright 2013 Emanuele Caruso. See LICENSE.txt for details.
  */
- 
+
 // Represents a multi-word buffer containing the next target line.
 // It uses lot of fields from StenoTutor class
 public class NextWordsBuffer {
@@ -138,12 +138,12 @@ public class NextWordsBuffer {
       usedBufferSize += textWidth(dictionary.get(nextWordIndex).word.trim() + " ");
 
       // If only one word is required, break the loop
-      if(isSingleWordBuffer) break;
+      if (isSingleWordBuffer) break;
     }
 
     // Remove this word because it probably finishes off-screen,
     // unless it's the only one
-    if(nextWords.size() > 1) nextWords.remove(nextWords.size()-1);
+    if (nextWords.size() > 1) nextWords.remove(nextWords.size()-1);
 
     // Highlight first word
     highlightedWordIndex = 0;
@@ -162,11 +162,11 @@ public class NextWordsBuffer {
       if (i == previousWordIndex || wordsBlacklist.contains(dictionary.get(i).word)) continue;
       else {
         int penalty = (int) utils.longmap(wordStats.get(i).getWordPenalty(), penaltyLimits[0], penaltyLimits[1], 1L, 100L);
-        
+
         for (int j = 0; j < penalty; j++) wordPool.add(i);
       }
     }
-    
+
     // Fetch a random word from the word pool
     return wordPool.get((int) random(0, wordPool.size()));
   }
@@ -193,9 +193,9 @@ public class NextWordsBuffer {
       int index = nextWords.get(i);
       String word = dictionary.get(index).word;
       if (i == highlightedWordIndex) {
-        
+
         if (lastFullWord.endsWith("{-|}")) {
-          word = word.substring(0,1).toUpperCase() + word.substring(1);
+          word = word.substring(0, 1).toUpperCase() + word.substring(1);
         }
         noFill();
         stroke(250, 200, 100);
