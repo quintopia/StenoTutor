@@ -8,6 +8,7 @@ import java.util.Properties;
 import java.util.Arrays; 
 import guru.ttslib.*; 
 import java.util.ArrayList; 
+import java.util.Arrays; 
 
 import java.util.HashMap; 
 import java.util.ArrayList; 
@@ -45,6 +46,7 @@ public class StenoTutor extends PApplet {
 
 // Session parameters, see data/session.properties for more info
 String lessonName;
+int timebox;
 int startBaseWords;
 int incrementWords;
 int minLevelUpWordWpm;
@@ -60,17 +62,18 @@ boolean showKeyboard;
 boolean showKeyboardQwerty;
 boolean showKeyboardChord;
 
-// Contains various helper methods
+//Various utility methods that we really only want to use statically but we have to 
+//use from an instance with no state because Processing behaves stupidly.
 Utils utils = new Utils();
+
 
 // Used to read Plover log
 BufferedReader logReader = null;
 
-// Font definition, size is modified later
-final PFont font = createFont("Arial",30,true);
+PFont font;
 
 // Default relative path to Plover log for Win and other OSs
-final String winLogBasePath = "/AppData/Local/plover/plover/plover.log";
+final String winLogBasePath = "/AppData/Local/plover/plover/strokes.log";
 final String xLogBasePath = "/.config/plover/plover.log";
 
 // Path to Plover log file
@@ -80,6 +83,7 @@ String logFilePath;
 String lesDictionaryFilePath;
 String chdDictionaryFilePath;
 String blkDictionaryFilePath;
+String sttDictionaryFilePath;
 
 // On-screen keyboard
 Keyboard keyboard;
@@ -109,7 +113,10 @@ ArrayList<WordStats> wordStats = new ArrayList<WordStats>();
 ArrayList<String> wordsBlacklist = new ArrayList<String>();
 
 // Current level
-int currentLevel = 0;
+int currentLevel;
+
+// Lesson completed
+boolean isLessonCompleted = false;
 
 // Unlocked words counter
 int unlockedWords = 0;
@@ -121,7 +128,13 @@ int currentWordIndex = 0;
 boolean isLessonStarted = false;
 
 // Whether the lesson is paused
-boolean isLessonPaused = false;
+boolean isLessonPaused = true;
+
+//Whether the lesson was just saved
+boolean isLessonSaved = true;
+
+// Selected item in pause menu
+int pauseMenuOption = 0;
 
 // Store lesson start time for WPM calculation
 long lessonStartTime;
@@ -140,13 +153,20 @@ int worstWordWpm = 0;
 String worstWord = "";
 
 // Stores the previous stroke, needed when redrawing text info
+Stroke stroke = null;
 Stroke previousStroke = new Stroke();
+
+// Stores the previous word; needed to determine whether to capitalize current word
+String lastFullWord = "";
 
 // Whether CONTROL key has been pressed and released, used to blacklist the current word
 boolean ctrlKeyReleased = false;
 
 // Whether TAB key has been pressed and released, used pause/resume the session
 boolean tabKeyReleased = false;
+
+// To say the current WPM occasionally, maybe
+WpmReporter wpmReporter = null;
 
 // If debugging, prints more info
 boolean debug = false;
@@ -160,6 +180,7 @@ int frameSizeX = 700;
 int frameSizeY = 480;
 int defaultFontSize = 20;
 int mainTextFontSize = 24;
+int menuFontSize = 50;
 int baseX = 60;
 int baseY = 70;
 int labelValueSpace = 20;
@@ -192,19 +213,27 @@ int keyboardY = baseY + 230;
 
 // Session setup
 public void setup() {
+  // Font definition, size is modified later
+  font = createFont("Arial", 30, true);
   // Read session configuration
   readSessionConfig();
 
-  // Find Plover log path
-  findPloverLog();
+  // Load Plover logs
+  logReader = utils.loadPloverLogs(logFilePath);
 
-  // Go to the end of Plover log file
-  logReader = utils.readEndOfFile(logFilePath);
+  // Set the last full word as the result of the last stroke in the log in case the user stroked
+  // something that will cause the next word to be capitalized just before starting the program. Mr.
+  stroke = utils.getNextStroke(logReader);
+  if (stroke != null) {
+    previousStroke = stroke;
+  }
+  lastFullWord = previousStroke.word;
 
   // Prepare file paths and read lesson dictionary and blacklist
-  lesDictionaryFilePath = sketchPath + "/data/lessons/" + lessonName + ".les";
-  chdDictionaryFilePath = sketchPath + "/data/lessons/" + lessonName + ".chd";
-  blkDictionaryFilePath = sketchPath + "/data/lessons/" + lessonName + ".blk";
+  lesDictionaryFilePath = sketchPath("/data/lessons/" + lessonName + ".les");
+  chdDictionaryFilePath = sketchPath("/data/lessons/" + lessonName + ".chd");
+  blkDictionaryFilePath = sketchPath("/data/lessons/" + lessonName + ".blk");
+  sttDictionaryFilePath = sketchPath("/data/lessons/" + lessonName + ".stt");
   dictionary = utils.readDictionary(lesDictionaryFilePath, chdDictionaryFilePath, debug);
   wordsBlacklist = utils.readBlacklist(blkDictionaryFilePath);
 
@@ -212,8 +241,9 @@ public void setup() {
   applyStartBlacklist();
 
   // Initialize word stats
-  for (int i = 0; i < dictionary.size(); i++) {
-    wordStats.add(new WordStats(wordStartAvgWpm, wordAvgSamples));
+  wordStats = utils.readWordStats(sttDictionaryFilePath, wordAvgSamples);
+  if (wordStats.size()==0) {
+    wordStats = defaultWordStats();
   }
 
   // Initialize target line buffer and set next word index
@@ -224,7 +254,7 @@ public void setup() {
   keyboard = new Keyboard(keyboardX, keyboardY, showKeyboardQwerty);
 
   // Configure display size
-  size(frameSizeX, frameSizeY);
+  
 
   // Initialize and configure speech synthesis
   tts = new TTS();
@@ -255,62 +285,84 @@ public void draw() {
     tabKeyReleased = false;
   }
 
-  // Read the next stroke from Plover log
-  Stroke stroke = utils.getNextStroke(logReader);
 
-  // If the stroke is not null, store it
-  if (stroke != null) {
-    previousStroke = stroke;
-  }
 
   // If the lesson just started, add word start avg time. This ensures that
   // the first word doesn't start with extremely low penalty.
-  if (!isLessonStarted && buffer.length() > 0) {
+  if (!isLessonStarted && !isLessonPaused) {
     isLessonStarted = true;
     lessonStartTime = System.currentTimeMillis();
     lastTypedWordTime = lessonStartTime - ((long) 60000.0f / wordStartAvgWpm);
     // Announce Level 0
     announceCurrentLevel();
     // If WPM reporting is enabled, start it
-    if (isSoundEnabled && wpmReportingPeriod > 0) {
-      WpmReporter wpmReporter = new WpmReporter((long) wpmReportingPeriod * 1000, tts);
+    if (isSoundEnabled && wpmReportingPeriod > 0 && wpmReporter==null) {
+      wpmReporter = new WpmReporter((long) wpmReportingPeriod * 1000, tts);
       wpmReporter.start();
     }
   }
 
-  // Check if input buffer matches and possibly advance to the next word
-  checkBuffer(false);
+
+
 
   // Paint background, show text info and draw keyboard
   background(25);
   showTextInfo(stroke == null ? previousStroke : stroke);
   drawKeyboard();
+  if (timebox>0 && getElapsedTime()/60000.f>=timebox) {
+    say("Session complete");
+    isLessonPaused = true;
+    isLessonStarted = false;
+    pauseMenuOption = 0;
+    resetSessionInfo();
+  }
+  if (isLessonPaused) {
+    showMenu();
+  }
 }
 
 public void keyPressed() {
-  if (keyCode == BACKSPACE) {
-      buffer = buffer.substring(0, max(0, buffer.length() - 1));
-  }
-
-  // Input buffer update.
-  if (key != CODED) {
-    // If the lesson is paused, any key will resume the lesson.
+  switch (key) {
+  case TAB:
+    tabKeyReleased = true;
+    pauseMenuOption = 0;
+    break;
+  case BACKSPACE:
+    buffer = buffer.substring(0, max(0, buffer.length() - 1));
+    break;
+  case ESC:
+  case DELETE:
+    break;
+  case ENTER:
+  case RETURN:
     if (isLessonPaused) {
-      tabKeyReleased = true;
+      firePauseMenuOption();
     }
-
-    switch (key) {
-    case TAB:
-      tabKeyReleased = true;
-      break;
-    case BACKSPACE:
-    case ESC:
-    case DELETE:
-    case ENTER:
-    case RETURN:
-      break;
-    default:
+    break;
+  case CODED:
+    if (isLessonPaused) {
+      switch(keyCode) {
+      case UP: 
+        pauseMenuOption = ((pauseMenuOption-1)%4 + 4)%4;
+        if (isLessonSaved && pauseMenuOption==1) pauseMenuOption = 0;
+        break;
+      case DOWN:
+        pauseMenuOption = (pauseMenuOption+1)%4;
+        if (isLessonSaved && pauseMenuOption==1) pauseMenuOption = 2;
+      }
+    }
+    break;
+  default:
+    if (!isLessonPaused) {
       buffer += key;
+      // Read the next stroke from Plover log
+      stroke = utils.getNextStroke(logReader);
+
+      // If the stroke is not null, store it
+      if (stroke != null) {
+        previousStroke = stroke;
+      }
+      checkBuffer(false);
     }
   }
 }
@@ -324,7 +376,6 @@ public void keyReleased() {
 
 // Pause/resume the session
 public void togglePause() {
-  if (!isLessonStarted) return;
   if (isLessonPaused) {
     long now = System.currentTimeMillis();
     long pauseTime = now - lastPauseTime;
@@ -354,13 +405,17 @@ public void applyStartBlacklist() {
 public void readSessionConfig() {
   Properties properties = new Properties();
   try {
-    properties.load(openStream(sketchPath + "/data/session.properties"));
-  } catch (Exception e ) {
+    properties.load(createInput(sketchPath("/data/session.properties")));
+  } 
+  catch (Exception e ) {
     println("Cannot read session properties, using defalt values. Error: " + e.getMessage());
   }
-  logFilePath = properties.getProperty("session.logFilePath", "");
+  logFilePath = properties.getProperty("session.logFilePath", findPloverLog());
   lessonName = properties.getProperty("session.lessonName", "common_words");
+  timebox = Integer.valueOf(properties.getProperty("session.timebox", "10"));
   startBaseWords = Integer.valueOf(properties.getProperty("session.startBaseWords", "" + 5));
+  unlockedWords = Integer.valueOf(properties.getProperty("session.unlockedWords", "0"));
+  currentLevel = Integer.valueOf(properties.getProperty("session.startLevel", "0"));
   incrementWords = Integer.valueOf(properties.getProperty("session.incrementWords", "" + 5));
   minLevelUpWordWpm = Integer.valueOf(properties.getProperty("session.minLevelUpWordWpm", "" + 30));
   minLevelUpTotalWpm = Integer.valueOf(properties.getProperty("session.minLevelUpTotalWpm", "" + 20));
@@ -377,14 +432,13 @@ public void readSessionConfig() {
 }
 
 // Automatically find Plover log file path
-public void findPloverLog() {
-  if(!logFilePath.equals("")) return;
+public String findPloverLog() {
   String userHome = System.getProperty("user.home");
   String userOs = System.getProperty("os.name");
   if (userOs.startsWith("Windows")) {
-    logFilePath = userHome + winLogBasePath;
+    return userHome + winLogBasePath;
   } else {
-    logFilePath = userHome + xLogBasePath;
+    return userHome + xLogBasePath;
   }
 }
 
@@ -434,11 +488,11 @@ public void drawKeyboard() {
 public void showTextInfo(Stroke stroke) {
   textAlign(RIGHT);
   fill(isLessonPaused ? 200 : 250);
-  textFont(font,mainTextFontSize);
+  textFont(font, mainTextFontSize);
   text("Target words:", nextWordX - labelValueSpace, nextWordY);
   text("Input:", bufferX - labelValueSpace, bufferY);
   fill(200);
-  textFont(font,defaultFontSize);
+  textFont(font, defaultFontSize);
   text("Next chord:", nextChordX - labelValueSpace, nextChordY);
   text("Typed chord:", lastChordX - labelValueSpace, lastChordY);
   text("WPM:", wpmX - labelValueSpace, wpmY);
@@ -451,9 +505,9 @@ public void showTextInfo(Stroke stroke) {
   text("Worst w:", worstWordX - labelValueSpace, worstWordY);
   textAlign(LEFT);
   fill(isLessonPaused ? 200 : 250);
-  textFont(font,mainTextFontSize);
-  nextWordsBuffer.showText(nextWordX, nextWordY);
-  text(buffer.trim() + (System.currentTimeMillis() % 1000 < 500 ? "_" : ""), bufferX, bufferY);
+  textFont(font, mainTextFontSize);
+  nextWordsBuffer.showText(nextWordX, nextWordY, lastFullWord);
+  text(buffer.trim() + (isLessonPaused || System.currentTimeMillis() % 1000 < 500 ? "_" : ""), bufferX, bufferY);
   fill(200);
   textFont(font, defaultFontSize);
   text(dictionary.get(currentWordIndex).stroke, nextChordX, nextChordY);
@@ -469,6 +523,86 @@ public void showTextInfo(Stroke stroke) {
   text(worstWord, worstWordX, worstWordY);
 }
 
+//display the pause menu
+public void showMenu() {
+  fill(200, 200, 250);
+  rect(width/2-125, height/2-110, 250, 222, 7);
+  textAlign(CENTER);
+  textFont(font, menuFontSize);
+  fill(pauseMenuOption == 0 ? 100 : 50);
+  text(isLessonStarted ? "RESUME" : "BEGIN", width/2, height/2-60);
+  fill(isLessonSaved ? 200 : pauseMenuOption == 1 ? 100 : 50);
+  text("SAVE", width/2, height/2-5);
+  fill(pauseMenuOption == 2 ? 100 : 50);
+  text("QUIT", width/2, height/2+50);
+  fill(pauseMenuOption == 3 ? 100 : 50);
+  text("RESET", width/2, height/2+105);
+}
+
+public void firePauseMenuOption() {
+  switch(pauseMenuOption) {
+  case 0: //resume
+    togglePause();
+    break;
+  case 1: //save
+    saveSession();
+    isLessonSaved = true;
+    pauseMenuOption += 1;
+    break;
+  case 2: //quit
+    exit();
+  case 3:
+    currentLevel = 0;
+    isLessonStarted = false;
+    wordStats = defaultWordStats();
+    unlockedWords = 0;
+    pauseMenuOption = 0;
+    typedWords = 0;
+    resetSessionInfo();
+  }
+}
+
+public void resetSessionInfo() {
+  typedWords = 0;
+  worstWordWpm = 0;
+  worstWord = "";
+  nextWordsBuffer.goToListEnd();
+  checkBuffer(true);
+}
+
+public void saveSession() {
+  //update session properties
+  //(note that the Java Properties class does not support per-property comments
+  //and there's no easy way to add apache commons configuration to Processing
+  //therefore, we must update the "startBaseWords" property manually by finding it
+  //in the properties file and replacing it with one that contains the correct value
+  try {
+    BufferedReader file = createReader(sketchPath("/data/session.properties"));
+    String line;
+    StringBuffer inputBuffer = new StringBuffer();
+    while ((line = file.readLine()) != null) {
+      if (line.startsWith("session.unlockedWords")) {
+        inputBuffer.append("session.unlockedWords = " + unlockedWords);
+      } else if (line.startsWith("session.startLevel")) {
+        inputBuffer.append("session.startLevel = " + currentLevel);
+      } else {
+        inputBuffer.append(line);
+      }
+      inputBuffer.append('\n');
+    }
+    String inputStr = inputBuffer.toString();
+    file.close();
+    PrintWriter outfile = createWriter(sketchPath("/data/session.properties"));
+    outfile.print(inputStr);
+    outfile.close();
+  } 
+  catch (IOException e) {
+    println("Error writing session properties.");
+  }
+  //save wordstats
+  utils.saveWordStats(wordStats, sttDictionaryFilePath);
+}
+
 // Get session average WPM
 public float getAverageWpm() {
   return isLessonStarted ? (typedWords / (getElapsedTime() / 60000.0f)) : 0.0f;
@@ -479,15 +613,21 @@ public float getAverageWpm() {
 // compute the next word based on word stats. Also, if conditions to
 // level up are met, unlock new words.
 public void checkBuffer(boolean forceNextWord) {
-  if (buffer.trim().equals(dictionary.get(currentWordIndex).word) || forceNextWord) {
+  String word = dictionary.get(currentWordIndex).word;
+  if (lastFullWord.endsWith("{-|}")) {
+    word = word.substring(0, 1).toUpperCase() + word.substring(1);
+  }
+  if (buffer.trim().equals(word) || forceNextWord) {
+    lastFullWord = previousStroke.word;
     buffer = ""; // Clear input buffer
     long typeTime = System.currentTimeMillis();
-    wordStats.get(currentWordIndex).typeTime.add(typeTime - lastTypedWordTime);
+    wordStats.get(currentWordIndex).addSample(typeTime - lastTypedWordTime);
     lastTypedWordTime = typeTime;
     typedWords++;
     checkLevelUp();
     currentWordIndex = nextWordsBuffer.getNextWordIndex();
     updateWorstWord();
+    isLessonSaved = false;
 
     // If word dictation is enabled, TTS current word
     if (isWordDictationEnabled) {
@@ -529,14 +669,22 @@ public void checkLevelUp() {
       return;
     }
   }
-  levelUp(); 
+  levelUp();
 }
 
 // Level up, unlock new words
 public void levelUp() {
   int totalWords = startBaseWords + unlockedWords;
+  if (totalWords == dictionary.size()) {
+    if (isLessonCompleted == false) {
+      announceLessonCompleted();
+      isLessonCompleted = true;
+    }
+    return;
+  }
   int i = totalWords;
   unlockedWords += incrementWords;
+  if (startBaseWords + unlockedWords > dictionary.size()) unlockedWords = dictionary.size() - startBaseWords;
   while (totalWords < startBaseWords + unlockedWords && i < dictionary.size()) {
     if (wordsBlacklist.contains(dictionary.get(i).word.trim())) {
       unlockedWords++;
@@ -552,16 +700,21 @@ public void levelUp() {
 
 // Announce current level
 public void announceCurrentLevel() {
-  if (isSoundEnabled && isAnnounceLevels) {
-    Speaker speaker = new Speaker("Level " + currentLevel, tts);
-    speaker.start();
+  if (isAnnounceLevels) {
+    say("Level " + currentLevel);
+  }
+}
+
+// Announce current level
+public void announceLessonCompleted() {
+  if (isAnnounceLevels) {
+    say("Lesson completed");
   }
 }
 
 // Announce current word
 public void sayCurrentWord() {
-  Speaker speaker = new Speaker(dictionary.get(currentWordIndex).word, tts);
-  speaker.start();
+  say(dictionary.get(currentWordIndex).word);
 }
 
 // Get total unlocked words less blacklisted ones
@@ -582,6 +735,23 @@ public void updateBuffer(Stroke stroke) {
   if (stroke.isDelete) buffer = buffer.substring(0, max(0, buffer.length() - stroke.word.length()));
   else buffer += stroke.word;
 }
+
+//Make default values of stats for all words in dictionary
+public ArrayList<WordStats> defaultWordStats() {
+  wordStats = new ArrayList<WordStats>();
+  for (int i = 0; i < dictionary.size(); i++) {
+    wordStats.add(new WordStats(wordStartAvgWpm, wordAvgSamples));
+  }
+  return wordStats;
+}
+
+public void say(String s) {
+  if (isSoundEnabled) {
+    Speaker speaker = new Speaker(s, tts);
+    speaker.start();
+  }
+}
+
 /*
  *   This file is part of StenoTutor.
  *
@@ -917,12 +1087,12 @@ public class NextWordsBuffer {
       usedBufferSize += textWidth(dictionary.get(nextWordIndex).word.trim() + " ");
 
       // If only one word is required, break the loop
-      if(isSingleWordBuffer) break;
+      if (isSingleWordBuffer) break;
     }
 
     // Remove this word because it probably finishes off-screen,
     // unless it's the only one
-    if(nextWords.size() > 1) nextWords.remove(nextWords.size()-1);
+    if (nextWords.size() > 1) nextWords.remove(nextWords.size()-1);
 
     // Highlight first word
     highlightedWordIndex = 0;
@@ -940,7 +1110,8 @@ public class NextWordsBuffer {
     for (int i = 0; i < startBaseWords + unlockedWords; i++) {
       if (i == previousWordIndex || wordsBlacklist.contains(dictionary.get(i).word)) continue;
       else {
-        int penalty = (int) map(wordStats.get(i).getWordPenalty(), penaltyLimits[0], penaltyLimits[1], 1, 100);
+        int penalty = (int) utils.longmap(wordStats.get(i).getWordPenalty(), penaltyLimits[0], penaltyLimits[1], 1L, 100L);
+
         for (int j = 0; j < penalty; j++) wordPool.add(i);
       }
     }
@@ -959,17 +1130,22 @@ public class NextWordsBuffer {
       if (currentMinPenalty > penalty) currentMinPenalty = penalty;
       if (currentMaxPenalty < penalty) currentMaxPenalty = penalty;
     }
+    if (currentMinPenalty==currentMaxPenalty) currentMaxPenalty+=1;
     return new long[] {currentMinPenalty, currentMaxPenalty};
   }
 
   // Draw target line text
-  public void showText(int x, int y) {
+  public void showText(int x, int y, String lastFullWord) {
     float currentX = x;
     textFont(font, mainTextFontSize);
     for (int i = 0; i < nextWords.size(); i++) {
       int index = nextWords.get(i);
       String word = dictionary.get(index).word;
       if (i == highlightedWordIndex) {
+
+        if (lastFullWord.endsWith("{-|}")) {
+          word = word.substring(0, 1).toUpperCase() + word.substring(1);
+        }
         noFill();
         stroke(250, 200, 100);
         line(currentX, y + mainTextFontSize / 5, currentX + textWidth(word), y + mainTextFontSize / 5);
@@ -996,6 +1172,7 @@ public class NextWordsBuffer {
     }
   }
 }
+
 /*
  *   This file is part of StenoTutor.
  *
@@ -1083,6 +1260,44 @@ public class Stroke extends Word{
 // Provides various helper methods
 public class Utils {
 
+  // Read WordStats dictionary
+  public ArrayList<WordStats> readWordStats(String sttDictionaryFilePath, int averageSamples) {
+    ArrayList<WordStats> wordStats = new ArrayList<WordStats>();
+    File f = new File(sttDictionaryFilePath);
+    if (f.exists()) {
+      JSONArray encodedStats = loadJSONArray(sttDictionaryFilePath);
+      for (int i = 0; i < encodedStats.size(); i++) {
+        JSONObject oneWord = encodedStats.getJSONObject(i);
+        JSONArray encodedTypeTimes = oneWord.getJSONArray("typeTimes");
+        long[] typeTimes = new long[encodedTypeTimes.size()];
+        for (int j = 0; j < encodedTypeTimes.size(); j++) {
+          typeTimes[j] = encodedTypeTimes.getLong(j);
+        }
+        wordStats.add(new WordStats(averageSamples, typeTimes));
+      }
+    }
+    return wordStats;
+  }
+
+  public void saveWordStats(ArrayList<WordStats> wordStats, String sttDictionaryFilePath) {
+    JSONArray encodedStats = new JSONArray();
+    for (int i = 0; i < wordStats.size(); i++) {
+      WordStats thisWord = wordStats.get(i);
+      JSONObject oneWord = new JSONObject();
+      JSONArray encodedTypeTimes = new JSONArray();
+      int k = 0;
+      for (int j = 0; j < thisWord.typeTime.length; j++) {
+        long time = thisWord.typeTime[(j + thisWord.nextSample)%thisWord.typeTime.length];
+        if (time>0) {
+          encodedTypeTimes.setLong(k++, time);
+        }
+      }
+      oneWord.setJSONArray("typeTimes", encodedTypeTimes);
+      encodedStats.setJSONObject(i, oneWord);
+    }
+    saveJSONArray(encodedStats, sttDictionaryFilePath, "compact");
+  }
+
   // Read lesson dictionary and add words and corresponing strokes
   // to the returned dictionary
   public ArrayList<Word> readDictionary(String lesDictionaryFilePath, String chdDictionaryFilePath, boolean debug) {
@@ -1111,8 +1326,8 @@ public class Utils {
     if (lesReader != null) {
       try {
         lesReader.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
 
@@ -1134,13 +1349,13 @@ public class Utils {
     if (chdReader != null) {
       try {
         chdReader.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
 
     // Store words and strokes in dictionary list
-    if (words != null && strokes != null) for (int i = 0; i < words.size(); i++) {
+    for (int i = 0; i < words.size(); i++) {
       Word word = new Word();
       word.word = words.get(i);
       word.stroke = strokes.get(i);
@@ -1178,8 +1393,8 @@ public class Utils {
     if (blkReader != null) {
       try {
         blkReader.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
 
@@ -1206,23 +1421,18 @@ public class Utils {
     if (blkWriter != null) {
       try {
         blkWriter.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
   }
 
   // Initialize Plover log reader and go to end of file
-  public BufferedReader readEndOfFile(String logFilePath) {
+  public BufferedReader loadPloverLogs(String logFilePath) {
     BufferedReader logReader = null;
-    String line = null;
-    String tempLine = null;
     try {
       Reader reader = new FileReader(logFilePath);
       logReader = new BufferedReader(reader);
-      while ((tempLine = logReader.readLine()) != null) {
-        line = tempLine;
-      }
     }
     catch (Exception e) {
       println("Error while reading Plover log file: " + e.getMessage());
@@ -1235,30 +1445,27 @@ public class Utils {
     Stroke stroke = new Stroke();
     String line = null;
     try {
-      line = logReader.readLine();
+      String l;
+      while ((l = logReader.readLine()) != null) line = l; 
       int indexOfTransl = -1;
-      if(line != null) indexOfTransl = line.indexOf("Translation");
-      if(line != null && indexOfTransl > -1) {
+      if (line != null) indexOfTransl = line.indexOf("Translation");
+      if (line != null && indexOfTransl > -1) {
         boolean isMultipleWorld = false;
         int indexOfLast = 1 + line.indexOf(",) : ");
         if (indexOfLast < 1) {
           isMultipleWorld = true;
           indexOfLast = line.indexOf(" : ");
         }
-        if (indexOfTransl == 24) {
-          stroke.isDelete = false;
-        }
-        else {
-          stroke.isDelete = true;
-        }
+        stroke.isDelete = (line.charAt(indexOfTransl-1)=='*');
         stroke.stroke = getStroke(line, indexOfTransl + 14, indexOfLast - 2);
-        stroke.word = line.substring(indexOfLast + (isMultipleWorld ? 2 : 3), line.length() - 1);
+        stroke.word = line.substring(indexOfLast + (isMultipleWorld ? 3 : 4), line.length() - 2);
         return stroke;
       } else {
         return null;
       }
-    } catch (Exception e) {
-      println("Error while reading stroke from Plover log file: " + e.getMessage());
+    } 
+    catch (Exception e) {
+      println("Error while reading stroke from Plover log file: " + e.getMessage()); //<>//
     }
     return null;
   }
@@ -1268,8 +1475,12 @@ public class Utils {
     String result = "";
     String strokeLine = line.substring(start, end);
     String[] strokes = strokeLine.split("', '");
-    for (String stroke: strokes) result += stroke + "/";
+    for (String stroke : strokes) result += stroke + "/";
     return result.substring(0, result.length() - 1);
+  }
+
+  public final long longmap(long value, long start1, long stop1, long start2, long stop2) {
+    return start2 + (stop2 - start2) * ((value - start1) / (stop1 - start1));
   }
 }
 /*
@@ -1317,42 +1528,62 @@ public class Word {
 
 // This class stores word speed and accuracy, and provides an
 // utility method to compute its penalty score.
+
 public class WordStats {
-  ArrayList<Long> typeTime = new ArrayList<Long>();
+  long[] typeTime;
+  int nextSample = 0;
   ArrayList<Boolean> isAccurate = new ArrayList<Boolean>();
   int averageSamples;
 
   // Standard constructor. Add a low performance record by default.
   public WordStats(int startAverageWpm, int averageSamples) {
     this.averageSamples = averageSamples;
-    typeTime.add((long) 60000.0f / startAverageWpm);
+    this.typeTime = new long[averageSamples];
+    Arrays.fill(this.typeTime, -1);
+    this.typeTime[this.typeTime.length - 1] = (long) 60000.0f / startAverageWpm;
     isAccurate.add(false); // this field is not used in the current version
+  }
+
+  // Constructor using existing data.
+  public WordStats(int averageSamples, long[] typeTime) {
+    this.averageSamples = averageSamples;
+    this.typeTime = new long[averageSamples];
+    Arrays.fill(this.typeTime, -1);
+    System.arraycopy(typeTime, max(0, typeTime.length-averageSamples), this.typeTime, max(0, averageSamples-typeTime.length), min(averageSamples, typeTime.length));
+    isAccurate.add(false); // this field is not used in the current version
+  }
+
+  public void addSample(long time) {
+    this.typeTime[this.nextSample] = time;
+    this.nextSample = (this.nextSample + 1)%this.averageSamples;
+  }
+
+  private long typeTimeSum() {
+    long totalTime = 0;
+    int samples = 0;
+    for (int i = 0; i < this.averageSamples; i++) {
+      if (this.typeTime[i] >= 0) {
+        totalTime+=this.typeTime[i];
+        samples++;
+      }
+    }
+    return totalTime*this.averageSamples/samples; //assume missing values are equal to mean
   }
 
   // Get average WPM for this word
   public float getAvgWpm() {
-    long totalTime = 0;
-    if (typeTime.size() > 0) {
-      for (int i = typeTime.size() - averageSamples; i < typeTime.size(); i++) totalTime += typeTime.get(max(i, 0));
-      return averageSamples * 1.0f / (totalTime / 60000.0f);
-    } else {
-      return 1.0f;
-    }
+    return this.averageSamples * 1.0f / (this.typeTimeSum() / 60000.0f);
   }
 
   // Return the word penalty score. In this version, only speed is
   // taking into account
   public long getWordPenalty() {
-    long timePenalty = 0;
-    if (typeTime.size() > 0) {
-      for (int i = typeTime.size() - averageSamples; i < typeTime.size(); i++) timePenalty += typeTime.get(max(i, 0));
-      // The returned value is directly proportional to timePenalty^3
-      return timePenalty * timePenalty / 2000 * timePenalty;
-    } else {
-      return 9999999999L;
-    }
+    long timePenalty = this.typeTimeSum();
+    // The returned value is directly proportional to timePenalty^3
+    return timePenalty * timePenalty / 2000 * timePenalty;
   }
 }
+
 /*
  *   This file is part of StenoTutor.
  *
@@ -1400,6 +1631,7 @@ public class WpmReporter extends Thread {
     }
   }
 }
+  public void settings() {  size(700, 480); }
   static public void main(String[] passedArgs) {
     String[] appletArgs = new String[] { "StenoTutor" };
     if (passedArgs != null) {

@@ -138,12 +138,12 @@ public class NextWordsBuffer {
       usedBufferSize += textWidth(dictionary.get(nextWordIndex).word.trim() + " ");
 
       // If only one word is required, break the loop
-      if(isSingleWordBuffer) break;
+      if (isSingleWordBuffer) break;
     }
 
     // Remove this word because it probably finishes off-screen,
     // unless it's the only one
-    if(nextWords.size() > 1) nextWords.remove(nextWords.size()-1);
+    if (nextWords.size() > 1) nextWords.remove(nextWords.size()-1);
 
     // Highlight first word
     highlightedWordIndex = 0;
@@ -161,7 +161,8 @@ public class NextWordsBuffer {
     for (int i = 0; i < startBaseWords + unlockedWords; i++) {
       if (i == previousWordIndex || wordsBlacklist.contains(dictionary.get(i).word)) continue;
       else {
-        int penalty = (int) map(wordStats.get(i).getWordPenalty(), penaltyLimits[0], penaltyLimits[1], 1, 100);
+        int penalty = (int) utils.longmap(wordStats.get(i).getWordPenalty(), penaltyLimits[0], penaltyLimits[1], 1L, 100L);
+
         for (int j = 0; j < penalty; j++) wordPool.add(i);
       }
     }
@@ -180,17 +181,22 @@ public class NextWordsBuffer {
       if (currentMinPenalty > penalty) currentMinPenalty = penalty;
       if (currentMaxPenalty < penalty) currentMaxPenalty = penalty;
     }
+    if (currentMinPenalty==currentMaxPenalty) currentMaxPenalty+=1;
     return new long[] {currentMinPenalty, currentMaxPenalty};
   }
 
   // Draw target line text
-  void showText(int x, int y) {
+  void showText(int x, int y, String lastFullWord) {
     float currentX = x;
     textFont(font, mainTextFontSize);
     for (int i = 0; i < nextWords.size(); i++) {
       int index = nextWords.get(i);
       String word = dictionary.get(index).word;
       if (i == highlightedWordIndex) {
+
+        if (lastFullWord.endsWith("{-|}")) {
+          word = word.substring(0, 1).toUpperCase() + word.substring(1);
+        }
         noFill();
         stroke(250, 200, 100);
         line(currentX, y + mainTextFontSize / 5, currentX + textWidth(word), y + mainTextFontSize / 5);

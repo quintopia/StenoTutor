@@ -22,6 +22,44 @@ import java.util.ArrayList;
 // Provides various helper methods
 public class Utils {
 
+  // Read WordStats dictionary
+  public ArrayList<WordStats> readWordStats(String sttDictionaryFilePath, int averageSamples) {
+    ArrayList<WordStats> wordStats = new ArrayList<WordStats>();
+    File f = new File(sttDictionaryFilePath);
+    if (f.exists()) {
+      JSONArray encodedStats = loadJSONArray(sttDictionaryFilePath);
+      for (int i = 0; i < encodedStats.size(); i++) {
+        JSONObject oneWord = encodedStats.getJSONObject(i);
+        JSONArray encodedTypeTimes = oneWord.getJSONArray("typeTimes");
+        long[] typeTimes = new long[encodedTypeTimes.size()];
+        for (int j = 0; j < encodedTypeTimes.size(); j++) {
+          typeTimes[j] = encodedTypeTimes.getLong(j);
+        }
+        wordStats.add(new WordStats(averageSamples, typeTimes));
+      }
+    }
+    return wordStats;
+  }
+
+  public void saveWordStats(ArrayList<WordStats> wordStats, String sttDictionaryFilePath) {
+    JSONArray encodedStats = new JSONArray();
+    for (int i = 0; i < wordStats.size(); i++) {
+      WordStats thisWord = wordStats.get(i);
+      JSONObject oneWord = new JSONObject();
+      JSONArray encodedTypeTimes = new JSONArray();
+      int k = 0;
+      for (int j = 0; j < thisWord.typeTime.length; j++) {
+        long time = thisWord.typeTime[(j + thisWord.nextSample)%thisWord.typeTime.length];
+        if (time>0) {
+          encodedTypeTimes.setLong(k++, time);
+        }
+      }
+      oneWord.setJSONArray("typeTimes", encodedTypeTimes);
+      encodedStats.setJSONObject(i, oneWord);
+    }
+    saveJSONArray(encodedStats, sttDictionaryFilePath, "compact");
+  }
+
   // Read lesson dictionary and add words and corresponing strokes
   // to the returned dictionary
   public ArrayList<Word> readDictionary(String lesDictionaryFilePath, String chdDictionaryFilePath, boolean debug) {
@@ -50,8 +88,8 @@ public class Utils {
     if (lesReader != null) {
       try {
         lesReader.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
 
@@ -73,13 +111,13 @@ public class Utils {
     if (chdReader != null) {
       try {
         chdReader.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
 
     // Store words and strokes in dictionary list
-    if (words != null && strokes != null) for (int i = 0; i < words.size(); i++) {
+    for (int i = 0; i < words.size(); i++) {
       Word word = new Word();
       word.word = words.get(i);
       word.stroke = strokes.get(i);
@@ -117,8 +155,8 @@ public class Utils {
     if (blkReader != null) {
       try {
         blkReader.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
 
@@ -145,23 +183,18 @@ public class Utils {
     if (blkWriter != null) {
       try {
         blkWriter.close();
-      } catch (Exception e) {
-
+      } 
+      catch (Exception e) {
       }
     }
   }
 
   // Initialize Plover log reader and go to end of file
-  BufferedReader readEndOfFile(String logFilePath) {
+  public BufferedReader loadPloverLogs(String logFilePath) {
     BufferedReader logReader = null;
-    String line = null;
-    String tempLine = null;
     try {
       Reader reader = new FileReader(logFilePath);
       logReader = new BufferedReader(reader);
-      while ((tempLine = logReader.readLine()) != null) {
-        line = tempLine;
-      }
     }
     catch (Exception e) {
       println("Error while reading Plover log file: " + e.getMessage());
@@ -170,44 +203,45 @@ public class Utils {
   }
 
   // Get next stroke from Plover log file
-  Stroke getNextStroke(BufferedReader logReader) {
+  public Stroke getNextStroke(BufferedReader logReader) {
     Stroke stroke = new Stroke();
     String line = null;
     try {
-      line = logReader.readLine();
+      String l;
+      while ((l = logReader.readLine()) != null) line = l; 
       int indexOfTransl = -1;
-      if(line != null) indexOfTransl = line.indexOf("Translation");
-      if(line != null && indexOfTransl > -1) {
+      if (line != null) indexOfTransl = line.indexOf("Translation");
+      if (line != null && indexOfTransl > -1) {
         boolean isMultipleWorld = false;
         int indexOfLast = 1 + line.indexOf(",) : ");
         if (indexOfLast < 1) {
           isMultipleWorld = true;
           indexOfLast = line.indexOf(" : ");
         }
-        if (indexOfTransl == 24) {
-          stroke.isDelete = false;
-        }
-        else {
-          stroke.isDelete = true;
-        }
+        stroke.isDelete = (line.charAt(indexOfTransl-1)=='*');
         stroke.stroke = getStroke(line, indexOfTransl + 14, indexOfLast - 2);
-        stroke.word = line.substring(indexOfLast + (isMultipleWorld ? 2 : 3), line.length() - 1);
+        stroke.word = line.substring(indexOfLast + (isMultipleWorld ? 3 : 4), line.length() - 2);
         return stroke;
       } else {
         return null;
       }
-    } catch (Exception e) {
-      println("Error while reading stroke from Plover log file: " + e.getMessage());
+    } 
+    catch (Exception e) {
+      println("Error while reading stroke from Plover log file: " + e.getMessage()); //<>//
     }
     return null;
   }
 
   // Format strokes and multiple strokes for a single word.
-  String getStroke(String line, int start, int end) {
+  public String getStroke(String line, int start, int end) {
     String result = "";
     String strokeLine = line.substring(start, end);
     String[] strokes = strokeLine.split("', '");
-    for (String stroke: strokes) result += stroke + "/";
+    for (String stroke : strokes) result += stroke + "/";
     return result.substring(0, result.length() - 1);
+  }
+
+  public final long longmap(long value, long start1, long stop1, long start2, long stop2) {
+    return start2 + (stop2 - start2) * ((value - start1) / (stop1 - start1));
   }
 }
