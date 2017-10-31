@@ -15,10 +15,12 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *   Copyright 2013 Emanuele Caruso. See LICENSE.txt for details.
+ *   Modified 2017 David Rutter
  */
 
 // This class stores word speed and accuracy, and provides an
 // utility method to compute its penalty score.
+// TODO: merge functionality into Word
 import java.util.Arrays;
 public class WordStats {
   long[] typeTime;

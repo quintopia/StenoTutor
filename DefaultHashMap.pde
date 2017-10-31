@@ -15,11 +15,30 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *   Copyright 2013 Emanuele Caruso. See LICENSE.txt for details.
+ *   This file created 2017 David Rutter
  */
-
-// This class represents an actual stroke
-public class Stroke {
-  String stroke = "";
-  String word = "";
-  boolean isDelete = false;
+public class DefaultHashMap<K,V extends Cloneable> extends HashMap<K,V> {
+  protected V defaultValue;
+  public DefaultHashMap(V defaultValue) {
+    this.defaultValue = defaultValue;
+  }
+  public DefaultHashMap() {
+    this.defaultValue = null;
+  }
+  @Override
+  public V get(Object k) {
+    if (containsKey(k)) {
+      return super.get(k);
+    } else {
+      V thing = null;
+      try {
+        thing = (V) this.defaultValue.getClass().getMethod("clone").invoke(defaultValue);
+      } catch (Exception e) {
+        //V is required to extend Cloneable for chrissake. you messed up bad if you let this happen
+        throw new RuntimeException("Clone not supported", e);
+      }
+      this.put((K)k,thing);
+      return thing;
+    }
+  }
 }

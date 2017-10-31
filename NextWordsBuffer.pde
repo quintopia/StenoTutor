@@ -15,6 +15,7 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *   Copyright 2013 Emanuele Caruso. See LICENSE.txt for details.
+ *   Modified 2017 David Rutter
  */
 
 // Represents a multi-word buffer containing the next target line.

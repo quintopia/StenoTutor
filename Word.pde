@@ -15,10 +15,43 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *   Copyright 2013 Emanuele Caruso. See LICENSE.txt for details.
+ *   File modified 2017 David Rutter
  */
 
 // This class represents a lesson word
 public class Word {
-  String stroke = "";
-  String word = "";
+  ArrayList<String> strokes;
+  String word;
+  
+  public Word(String word, ArrayList<String> strokes) {
+    this.word = word;
+    this.strokes = strokes;
+  }
+  
+  //given the chords that have been input so far for this word, return the best next chord to progress
+  //if there has already been a mistake (and no stroke matches the current word), return "*"
+  public String getBestStroke(String strokesofar) {
+    int beststrokecount = 50; //there's no words requiring this many strokes
+    String beststroke = null;
+    for (String stroke: this.strokes) {
+      int strokecount = utils.countOccurences(stroke,'/');
+      if (stroke.startsWith(strokesofar)) {
+        //the best candidate will use the fewest strokes and, of those with fewest strokes, have the fewest keys
+        if (beststroke==null || strokecount <= beststrokecount || (strokecount==beststrokecount && stroke.length() < beststroke.length())) {
+          beststroke = stroke;
+          beststrokecount = strokecount;
+        }
+      }
+    }
+    if (beststroke==null) {
+      return "*";
+    } else {
+      //return just the next chord
+      try {
+        return beststroke.substring(strokesofar==""?0:strokesofar.length()+1,(beststroke+'/').indexOf('/',strokesofar.length()+1));
+      } catch (IndexOutOfBoundsException e) {
+        return beststroke; //<>//
+      }
+    }
+  }
 }

@@ -15,6 +15,7 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *   Copyright 2013 Emanuele Caruso. See LICENSE.txt for details.
+ *   Modified 2017 David Rutter
  */
 
 import java.io.*;
@@ -49,16 +50,21 @@ BufferedReader logReader = null;
 
 PFont font;
 
-// Default relative path to Plover log for Win and other OSs
+// Default relative path to Plover log and dicts for Win and other OSs
 final String winLogBasePath = "/AppData/Local/plover/plover/strokes.log";
+final String winMainDictPath = "/AppData/Local/plover/plover/dict.json";
+final String winUserDictPath = "/AppData/Local/plover/plover/user.json";
 final String xLogBasePath = "/.config/plover/plover.log";
+final String xMainDictPath = "/.config/plover/dict.json";
+final String xUserDictPath = "/.config/plover/user.json";
 
-// Path to Plover log file
+// Paths to Plover files
 String logFilePath;
+String mainDictFilePath;
+String userDictFilePath;
 
 // Paths to lesson dictionaries and blacklist
 String lesDictionaryFilePath;
-String chdDictionaryFilePath;
 String blkDictionaryFilePath;
 String sttDictionaryFilePath;
 
@@ -75,7 +81,7 @@ NextWordsBuffer nextWordsBuffer;
 TTS tts;
 
 // Dictionary of current lesson
-ArrayList<Word> dictionary;
+Dictionary dictionary;
 
 // Stats of current lesson for each word
 ArrayList<WordStats> wordStats = new ArrayList<WordStats>();
@@ -208,10 +214,9 @@ void setup() {
 
   // Prepare file paths and read lesson dictionary and blacklist
   lesDictionaryFilePath = sketchPath("/data/lessons/" + lessonName + ".les");
-  chdDictionaryFilePath = sketchPath("/data/lessons/" + lessonName + ".chd");
   blkDictionaryFilePath = sketchPath("/data/lessons/" + lessonName + ".blk");
   sttDictionaryFilePath = sketchPath("/data/lessons/" + lessonName + ".stt");
-  dictionary = utils.readDictionary(lesDictionaryFilePath, chdDictionaryFilePath, debug);
+  dictionary = new Dictionary(lesDictionaryFilePath, mainDictFilePath, userDictFilePath, debug);
   wordsBlacklist = utils.readBlacklist(blkDictionaryFilePath);
 
   // Make sure startBaseWords is adjusted based on blacklist
@@ -241,7 +246,7 @@ void setup() {
   background(25);
   Stroke stroke = new Stroke();
   showTextInfo(stroke);
-  drawKeyboard();
+  drawKeyboard(stroke);
 
   // If word dictation is enabled, TTS the first word
   if (isWordDictationEnabled) {
@@ -285,7 +290,7 @@ void draw() {
   // Paint background, show text info and draw keyboard
   background(25);
   showTextInfo(stroke == null ? previousStroke : stroke);
-  drawKeyboard();
+  drawKeyboard(stroke == null ? previousStroke : stroke);
   if (timebox>0 && getElapsedTime()/60000.>=timebox) {
     say("Session complete");
     isLessonPaused = true;
@@ -387,7 +392,9 @@ void readSessionConfig() {
   catch (Exception e ) {
     println("Cannot read session properties, using defalt values. Error: " + e.getMessage());
   }
-  logFilePath = properties.getProperty("session.logFilePath", findPloverLog());
+  logFilePath = properties.getProperty("session.logFilePath", findPloverFiles(winLogBasePath,xLogBasePath));
+  mainDictFilePath = properties.getProperty("session.mainDictFilePath", findPloverFiles(winMainDictPath,xMainDictPath));
+  userDictFilePath = properties.getProperty("session.userDictFilePath", findPloverFiles(winUserDictPath,xUserDictPath));
   lessonName = properties.getProperty("session.lessonName", "common_words");
   timebox = Integer.valueOf(properties.getProperty("session.timebox", "10"));
   startBaseWords = Integer.valueOf(properties.getProperty("session.startBaseWords", "" + 5));
@@ -408,14 +415,14 @@ void readSessionConfig() {
   showKeyboardChord = Boolean.valueOf(properties.getProperty("session.showKeyboardChord", "true"));
 }
 
-// Automatically find Plover log file path
-String findPloverLog() {
+// Automatically find Plover files paths
+String findPloverFiles(String winBasePath,String xBasePath) {
   String userHome = System.getProperty("user.home");
   String userOs = System.getProperty("os.name");
   if (userOs.startsWith("Windows")) {
-    return userHome + winLogBasePath;
+    return userHome + winBasePath;
   } else {
-    return userHome + xLogBasePath;
+    return userHome + xBasePath;
   }
 }
 
@@ -447,15 +454,16 @@ long getElapsedTime() {
 }
 
 // Draw keyboard
-void drawKeyboard() {
+void drawKeyboard(Stroke stroke) {
   if (!showKeyboard) {
     return;
   }
 
-  // If show chord is enabled, show the first chord
+  // If show chord is enabled, show the next chord
   if (showKeyboardChord) {
-    String[] chords = dictionary.get(currentWordIndex).stroke.split("/");
-    keyboard.draw(chords[0]);
+    Word current = dictionary.get(currentWordIndex);
+    String chord = current.getBestStroke(buffer.equals("") ? "" : stroke.stroke);
+    keyboard.draw(chord);
   } else {
     keyboard.draw("-");
   }
@@ -487,7 +495,7 @@ void showTextInfo(Stroke stroke) {
   text(buffer.trim() + (isLessonPaused || System.currentTimeMillis() % 1000 < 500 ? "_" : ""), bufferX, bufferY);
   fill(200);
   textFont(font, defaultFontSize);
-  text(dictionary.get(currentWordIndex).stroke, nextChordX, nextChordY);
+  text(dictionary.get(currentWordIndex).getBestStroke(buffer.equals("") ? "" : stroke.stroke), nextChordX, nextChordY);
   text(stroke.isDelete ? "*" : buffer.equals("") ? "" : stroke.stroke, lastChordX, lastChordY);
   text((int) getAverageWpm(), wpmX, wpmY);
   long timerValue = isLessonStarted ? getElapsedTime() : 0;
@@ -703,14 +711,6 @@ int getActualUnlockedWords() {
     }
   }
   return result;
-}
-
-// Update the input buffer according to the passed stroke.
-// Not used in this version, see keyReleased() for the current
-// input buffer update mechanism.
-void updateBuffer(Stroke stroke) {
-  if (stroke.isDelete) buffer = buffer.substring(0, max(0, buffer.length() - stroke.word.length()));
-  else buffer += stroke.word;
 }
 
 //Make default values of stats for all words in dictionary
