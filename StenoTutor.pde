@@ -21,6 +21,7 @@
 import java.io.*;
 import java.util.Properties;
 import java.util.Arrays;
+import java.util.Map;
 
 // Session parameters, see data/session.properties for more info
 String lessonName;

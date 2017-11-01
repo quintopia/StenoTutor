@@ -20,10 +20,10 @@
 
 // This class represents a lesson word
 public class Word {
-  ArrayList<String> strokes;
+  HashMap<String,String> strokes;
   String word;
   
-  public Word(String word, ArrayList<String> strokes) {
+  public Word(String word, HashMap<String,String> strokes) {
     this.word = word;
     this.strokes = strokes;
   }
@@ -33,8 +33,13 @@ public class Word {
   public String getBestStroke(String strokesofar) {
     int beststrokecount = 50; //there's no words requiring this many strokes
     String beststroke = null;
-    for (String stroke: this.strokes) {
+    for (Map.Entry<String, String> entry : this.strokes.entrySet()) {
+      String stroke = entry.getKey();
+      String category = entry.getValue();
       int strokecount = utils.countOccurences(stroke,'/');
+      //prefer briefs. avoid misstrokes.
+      if (category.indexOf("brief")>=0) strokecount--;
+      if (category.indexOf("misstroke")>=0) strokecount++;
       if (stroke.startsWith(strokesofar)) {
         //the best candidate will use the fewest strokes and, of those with fewest strokes, have the fewest keys
         if (beststroke==null || strokecount <= beststrokecount || (strokecount==beststrokecount && stroke.length() < beststroke.length())) {

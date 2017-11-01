@@ -22,6 +22,7 @@
 public class Dictionary {
 
   private ArrayList<Word> dictionary;
+  private final String categoryPath = sketchPath("/data/incategory.json");
     
   public Word get(int index) {
     return dictionary.get(index);
@@ -36,6 +37,12 @@ public class Dictionary {
     String tempLine = null;
     BufferedReader lesReader = null;
     ArrayList<String> words = new ArrayList<String>();
+    JSONArray categories = loadJSONArray(categoryPath);
+    HashMap<String,String> catmap = new HashMap<String,String>();
+    for (int i=0;i<categories.size();i++) {
+      JSONArray stroak = categories.getJSONArray(i);
+      catmap.put(stroak.getString(1),stroak.getString(2));
+    }
     dictionary = new ArrayList<Word>();
     int chordcount = 0;
 
@@ -62,7 +69,7 @@ public class Dictionary {
       catch (Exception e) {
       }
     }
-    HashMap<String,ArrayList<String>> wordStrokeMap = new DefaultHashMap<String,ArrayList<String>>(new ArrayList<String>());
+    HashMap<String,HashMap<String,String>> wordStrokeMap = new DefaultHashMap<String,HashMap<String,String>>(new HashMap<String,String>());
     // Read and store strokes
     try {
       
@@ -70,7 +77,7 @@ public class Dictionary {
       String[] strokeys = (String[]) jsonMap.keys().toArray(new String[jsonMap.size()]);
       for (int i = 0; i < jsonMap.size(); i++) {
         String word = jsonMap.getString(strokeys[i]);
-        wordStrokeMap.get(word).add(strokeys[i]);
+        wordStrokeMap.get(word).put(strokeys[i],catmap.containsKey(strokeys[i])?catmap.get(strokeys[i]):"unassigned");
       }
       File f = new File(userDictionaryFilePath);
       if (f.exists()) {
@@ -78,7 +85,7 @@ public class Dictionary {
         strokeys = (String[]) jsonMap.keys().toArray(new String[jsonMap.size()]);
         for (int i = 0; i < jsonMap.size(); i++) {
           String word = jsonMap.getString(strokeys[i]);
-          wordStrokeMap.get(word).add(strokeys[i]);
+          wordStrokeMap.get(word).put(strokeys[i],catmap.containsKey(strokeys[i])?catmap.get(strokeys[i]):"unassigned");
         }
       }
       
@@ -92,7 +99,7 @@ public class Dictionary {
 
     // Store words and strokes in dictionary list
     for (String w: words) {
-      ArrayList<String> chords = wordStrokeMap.get(w);
+      HashMap<String,String> chords = wordStrokeMap.get(w);
       if (chords.size()==0) {
         //TODO: build strokes for words not in the dictionary using prefixes and suffixes and the like (as all said prefixes and suffixes must, at this point, be in the wordStrokeMap)
         //yes this seems like it should be hard since it is literally about trying to break apart English words into component pieces, but I believe the Plover dictionary has done
