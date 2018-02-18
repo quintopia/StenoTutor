@@ -76,11 +76,11 @@ public class Keyboard {
       fill(pressedKeys[rowIndex][i] ? 0 : 75);
       rect(rowX + (keySizeX + 10) * i, rowY, keySizeX, keySizeY, 5);
       fill(225);
-      textAlign(CENTER);
-      text(stenoRows[rowIndex][i], rowX + keySizeX / 2 + (keySizeX + 10) * i, rowY + (keySizeY / 2 + 10));
+      textAlign(LEFT);
+      text(stenoRows[rowIndex][i], rowX + keySizeX / 2 + (keySizeX + 10) * i - 5, rowY + (keySizeY / 2 + 10));
       if (showQwerty) {
         fill(40);
-        text(qwertyRows[rowIndex][i], rowX + keySizeX / 2 + (keySizeX + 10) * i - 15, rowY + (keySizeY / 2 + 10) - 15);
+        text(qwertyRows[rowIndex][i], rowX + keySizeX / 2 + (keySizeX + 10) * i - 20, rowY + (keySizeY / 2 + 10) - 15);
       }
     }
   }

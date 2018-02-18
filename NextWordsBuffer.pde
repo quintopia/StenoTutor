@@ -22,18 +22,20 @@
 // It uses lot of fields from StenoTutor class
 public class NextWordsBuffer {
   // A list of integers containing all the words in the line
-  ArrayList<Integer> nextWords = new ArrayList<Integer>();
+  ArrayList<String> nextWords = new ArrayList<String>();
   // A list of integers containing all the words in the next line
-  ArrayList<Integer> nextLineWords = new ArrayList<Integer>();
+  ArrayList<String> nextLineWords = new ArrayList<String>();
+  Lesson lesson;
 
   // Other state variables
   int highlightedWordIndex;
   int bufferSize;
 
   // Default constructor
-  NextWordsBuffer(int bufferSize) {
+  NextWordsBuffer(Lesson lesson, int bufferSize) {
     this.bufferSize = bufferSize;
-    fillNewLine(1);
+    this.lesson = lesson;
+    fillNewLine();
   }
 
   // Go to last item in the list
@@ -41,72 +43,65 @@ public class NextWordsBuffer {
     highlightedWordIndex = nextWords.size() - 1;
   }
 
-  // Get current word dictionary index
-  int getCurrentWordIndex() {
+  // Get current word
+  String getCurrentWord() {
     return nextWords.get(highlightedWordIndex);
   }
 
-  // Get next word dictionary index
-  int getNextWordIndex() {
+  // Get next word
+  void advance() {
     highlightedWordIndex++;
     if (highlightedWordIndex < nextWords.size()) {
       addWordsToNextLine();
-      return nextWords.get(highlightedWordIndex);
     } else {
-      fillNewLine(nextWords.get(highlightedWordIndex-1));
-      return getCurrentWordIndex();
+      fillNewLine();
     }
+    //advance again if new word isn't active
+    if (!dictionary.get(getCurrentWord()).isActive()) advance();
   }
 
   // Tries to add a word to the next line
   void addWordsToNextLine() {
     if (isSingleWordBuffer) return;
-    int lastWordIndex;
-    if (nextLineWords.size() > 0) {
-      lastWordIndex = nextLineWords.get(nextLineWords.size() - 1);
-    } else {
-      lastWordIndex = nextWords.get(nextWords.size() - 1);
-    }
     float usedBufferSize = getLineWidth(nextLineWords);
-    long[] penaltyLimits = calculatePenaltyLimits();
-    float partialLineWidth = getLineWidth(nextWords, max(highlightedWordIndex - 1, 0));
+    float partialLineWidth = getLineWidth(nextWords);
+
 
     while (usedBufferSize < partialLineWidth) {
-      int nextWordIndex = getNextWordFromPool(lastWordIndex, penaltyLimits);
-      nextLineWords.add(nextWordIndex);
-      lastWordIndex = nextWordIndex;
+      String nextWord = lesson.getNextWordFromPool();
+      nextLineWords.add(nextWord);
 
       textFont(font, mainTextFontSize);
-      usedBufferSize += textWidth(dictionary.get(nextWordIndex).word.trim() + " ");
+      usedBufferSize += textWidth(nextWord.trim() + " ");
     }
 
     // Remove this word because it finishes too far
     if (nextLineWords.size() > 0) {
       nextLineWords.remove(nextLineWords.size()-1);
+      lesson.rewind();
     }
   }
 
   // Get line width
-  float getLineWidth(ArrayList<Integer> words) {
+  float getLineWidth(ArrayList<String> words) {
     float result = 0;
-    for (Integer wordIndex : words) {
-      result += textWidth(dictionary.get(wordIndex).word.trim() + " ");
+    for (String word : words) {
+      result += textWidth(word.trim() + " ");
     }
     return result;
   }
 
   // Get partial line width
-  float getLineWidth(ArrayList<Integer> words, int maxWordIndex) {
+  float getLineWidth(ArrayList<String> words, int maxWordIndex) {
     float result = 0;
     for (int i = 0; i < maxWordIndex; i++) {
-      result += textWidth(dictionary.get(words.get(i)).word.trim() + " ");
+      result += textWidth(words.get(i).trim() + " ");
     }
     return result;
   }
 
   // Fill a new line
-  void fillNewLine(int previousWordIndex) {
-    int lastWordIndex = previousWordIndex;
+  void fillNewLine() {
 
     // Clear word list
     nextWords.clear();
@@ -114,16 +109,12 @@ public class NextWordsBuffer {
     // Store the used space
     float usedBufferSize = 0;
 
-    // Calculate current min and max penalty limits
-    long[] penaltyLimits = calculatePenaltyLimits();
-
     // If there are words in the next line, first use them
-    for (Integer wordIndex : nextLineWords) {
-      nextWords.add(wordIndex);
+    for (String word : nextLineWords) {
+      nextWords.add(word);
 
       textFont(font, mainTextFontSize);
-      usedBufferSize += textWidth(dictionary.get(wordIndex).word.trim() + " ");
-      lastWordIndex = wordIndex;
+      usedBufferSize += textWidth(word.trim() + " ");
     }
 
     // Clear the next line, no longer needed
@@ -131,12 +122,11 @@ public class NextWordsBuffer {
 
     // Fill the new line as long as there is space in the buffer
     while (usedBufferSize < bufferSize) {
-      int nextWordIndex = getNextWordFromPool(lastWordIndex, penaltyLimits);
-      nextWords.add(nextWordIndex);
-      lastWordIndex = nextWordIndex;
+      String nextWord = lesson.getNextWordFromPool();
+      nextWords.add(nextWord);
 
       textFont(font, mainTextFontSize);
-      usedBufferSize += textWidth(dictionary.get(nextWordIndex).word.trim() + " ");
+      usedBufferSize += textWidth(nextWord.trim() + " ");
 
       // If only one word is required, break the loop
       if (isSingleWordBuffer) break;
@@ -144,55 +134,31 @@ public class NextWordsBuffer {
 
     // Remove this word because it probably finishes off-screen,
     // unless it's the only one
-    if (nextWords.size() > 1) nextWords.remove(nextWords.size()-1);
+    if (nextWords.size() > 1) {
+      nextWords.remove(nextWords.size()-1);
+      lesson.rewind();
+    }
 
     // Highlight first word
     highlightedWordIndex = 0;
   }
 
-  // Compute the next word. Slow-typed words have more possibilities
-  // to show up than fast-typed ones
-  int getNextWordFromPool(int previousWordIndex, long[] penaltyLimits) {
-    // Create word pool
-    ArrayList<Integer> wordPool = new ArrayList<Integer>();
+  
 
-    // For each unlocked word, if it's not the current one and it
-    // isn't blacklisted, add it to the pool a number of times,
-    // based on word penalty.
-    for (int i = 0; i < startBaseWords + unlockedWords; i++) {
-      if (i == previousWordIndex || wordsBlacklist.contains(dictionary.get(i).word)) continue;
-      else {
-        int penalty = (int) utils.longmap(wordStats.get(i).getWordPenalty(), penaltyLimits[0], penaltyLimits[1], 1L, 100L);
 
-        for (int j = 0; j < penalty; j++) wordPool.add(i);
-      }
-    }
 
-    // Fetch a random word from the word pool
-    return wordPool.get((int) random(0, wordPool.size()));
-  }
 
-  // Calculate current min and max penalty limits
-  long[] calculatePenaltyLimits() {
-    long currentMinPenalty = 1000000000;
-    long currentMaxPenalty = 0;
-    for (int i = 0; i < min(dictionary.size(), startBaseWords + unlockedWords); i++) {
-      if (i == currentWordIndex || wordsBlacklist.contains(dictionary.get(i).word)) continue;
-      long penalty = wordStats.get(i).getWordPenalty();
-      if (currentMinPenalty > penalty) currentMinPenalty = penalty;
-      if (currentMaxPenalty < penalty) currentMaxPenalty = penalty;
-    }
-    if (currentMinPenalty==currentMaxPenalty) currentMaxPenalty+=1;
-    return new long[] {currentMinPenalty, currentMaxPenalty};
-  }
 
   // Draw target line text
   void showText(int x, int y, String lastFullWord) {
     float currentX = x;
     textFont(font, mainTextFontSize);
     for (int i = 0; i < nextWords.size(); i++) {
-      int index = nextWords.get(i);
-      String word = dictionary.get(index).word;
+      String word = nextWords.get(i);
+      float alpha = 256;
+      if (!dictionary.get(word).isActive()) {
+        alpha=75;
+      }
       if (i == highlightedWordIndex) {
 
         if (lastFullWord.endsWith("{-|}")) {
@@ -201,25 +167,30 @@ public class NextWordsBuffer {
         noFill();
         stroke(250, 200, 100);
         line(currentX, y + mainTextFontSize / 5, currentX + textWidth(word), y + mainTextFontSize / 5);
-        fill(250, 200, 100);
+        fill(250, 200, 100, alpha);
       }
       text(word, currentX, y);
-      if (i == highlightedWordIndex) fill(isLessonPaused ? 200 : 250);
+      if (i == highlightedWordIndex) fill(isLessonPaused ? 200 : 250, 256);
       currentX += textWidth(word + " ");
     }
 
     // Draw next line
     currentX = x;
     for (int i = 0; i < nextLineWords.size(); i++) {
+      String word = nextLineWords.get(i);
+      int grey;
       if (nextLineWords.size() < 3) {
-        fill(25);
+        grey=25;
       } else {
-        fill(min(250, 25 * (nextLineWords.size() - i)));
+        grey=min(250, 25 * (nextLineWords.size() - i));
       }
-      int index = nextLineWords.get(i);
-      String word = dictionary.get(index).word;
+      if (!dictionary.get(word).isActive()) {
+        fill(grey, 75);
+      } else {
+        fill(grey, 256);
+      }
       text(word, currentX, y + mainTextFontSize);
-      fill(isLessonPaused ? 200 : 250);
+      fill(isLessonPaused ? 200 : 250, 256);
       currentX += textWidth(word + " ");
     }
   }
